@@ -140,13 +140,22 @@ void readpixel(ifstream& ifs, BMP& plik) {
 	}
 }
 
-void readBMP(BMP& plik, string path) {
+int readBMP(BMP& plik, string path) {
 	ifstream ifs;
 	ifs.open(path, ios::binary);
+	if (!ifs.is_open()) {
+		cout << "Plik nie istnieje." << endl;
+		return -1;
+	}
 	readheader(ifs, plik.header);
+	if (plik.header.file_type != 0x4D42) {
+		cout << "Niepoprawny typ pliku." << endl;
+		return -1;
+	}
 	readinfo(ifs, plik.info);
 	readpixel(ifs, plik);
 	ifs.close();
+	return 0;
 }
 
 void printinfo(BMP plik) {
@@ -168,19 +177,6 @@ void printinfo(BMP plik) {
 	cout << "Important colors: " << plik.info.colors_important << endl;
 	cout << "sizeof(plik.header): " << sizeof(plik.header) << endl;
 	cout << "sizeof(plik.info): " << sizeof(plik.info) << endl;
-}
-
-void zerujkrawedzie(pixel* temp, uint32_t szerokosc, uint32_t wysokosc) {
-	pixel zero;
-	for (int i = 0; i < szerokosc; i++) {
-		temp[i] = zero;
-		temp[szerokosc * (wysokosc - 1) + i] = zero;
-	}
-	for (int i = 1; i < wysokosc - 1; i++) {
-		temp[i * szerokosc] = zero;
-		temp[(i + 1) * szerokosc - 1] = zero;
-	}
-
 }
 
 void mapuj(int& tR, int& tG, int& tB) {
@@ -245,7 +241,6 @@ void wykrywanie(BMP plik, const int m[3][3]) {
 			maska(zr, temp[i * width + j], s7);
 			maska(zr, temp[i * width + j], s8);
 		}
-	zerujkrawedzie(temp, width, height);
 	copy(temp, temp + plik.info.size_image, plik.piksele);
 	delete[] temp;
 }
@@ -254,6 +249,7 @@ void saveBMP(BMP plik, string path) {
 	ofstream ofs;
 	ofs.open(path, ios::binary);
 	byte z = 0;
+	plik.header.offset_data = sizeof(plik.header) + sizeof(plik.info);
 	ofs.write((char*)&plik.header, sizeof(plik.header));
 	ofs.write((char*)&plik.info, sizeof(plik.info));
 	ofs.seekp(plik.header.offset_data, ios::beg);
@@ -269,13 +265,14 @@ void saveBMP(BMP plik, string path) {
 
 int main()
 {
-
+	
 	cout << "Wpisz nazwe pliku: ";
 	string path;
 	cin >> path;
 
 	BMP plik;
-	readBMP(plik, path);
+	if (readBMP(plik, path) == -1)
+		return -1;
 	printinfo(plik);
 	wykrywanie(plik, s1);
 
@@ -284,6 +281,6 @@ int main()
 	cin >> path_out;
 	
 	saveBMP(plik, path_out);
-	
+	delete[] plik.piksele;
 	
 }
