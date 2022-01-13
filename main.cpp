@@ -1,13 +1,13 @@
 #include <iostream>
 #include <fstream>
-
-#pragma pack(1) //wyrownanie pol struktur do 2 bajtow
-
-typedef unsigned char byte;
+#include <string>
+#pragma pack(1) //wyrownanie pol struktur do 1 bajta zeby wyeliminowac wyrownywanie pol struktur do 4 bajtow
 
 using namespace std;
 
+typedef unsigned char byte;
 
+const bool srednia = false;
 
 struct BMPheader { //naglowek pliku
 	uint16_t file_type = 0x4D42; //typ pliku, dla BMP zawsze 0x4D42
@@ -43,54 +43,47 @@ struct BMP {
 	pixel* piksele;
 };
 
-
-const int s1[3][3] = {
-	{-1, 0, 1},
-	{-2, 0, 2},
-	{-1, 0, 1}
-};
-
-const int s2[3][3] = {
-	
-	{1, 0, -1},
-	{2, 0, -2},
-	{1, 0, -1}
-};
-
-const int s3[3][3] = {
-	{1,   2,  1},
-	{0,   0,  0},
-	{-1, -2, -1}
-};
-
-const int s4[3][3] = {
-	{-1, -2, -1},
-	{0,   0,  0},
-	{1,   2,  1}
-};
-
-const int s5[3][3] = {
-	{0,   1, 2},
-	{-1,  0, 1},
-	{-2, -1, 0}
-};
-
-const int s6[3][3] = {
-	{0, -1, -2},
-	{1,  0, -1},
-	{2,  1,  0}
-};
-
-const int s7[3][3] = {
-	{2,  1,  0},
-	{1,  0, -1},
-	{0, -1, -2}
-};
-
-const int s8[3][3] = {
-	{-2, -1, 0},
-	{-1,  0, 1},
-	{0,   1, 2}
+const int s[8][3][3] = {
+	{
+		{-1, 0, 1},
+		{-2, 0, 2},
+		{-1, 0, 1}
+	},
+	{
+		{1, 0, -1},
+		{2, 0, -2},
+		{1, 0, -1}
+	},
+	{
+		{1,   2,  1},
+		{0,   0,  0},
+		{-1, -2, -1}
+	},
+	{
+		{-1, -2, -1},
+		{0,   0,  0},
+		{1,   2,  1}
+	},
+	{
+		{0,   1, 2},
+		{-1,  0, 1},
+		{-2, -1, 0}
+	},
+	{
+		{0, -1, -2},
+		{1,  0, -1},
+		{2,  1,  0}
+	},
+	{
+		{2,  1,  0},
+		{1,  0, -1},
+		{0, -1, -2}
+	},
+	{
+		{-2, -1, 0},
+		{-1,  0, 1},
+		{0,   1, 2}
+	}
 };
 
 void readheader(ifstream& ifs, BMPheader& bfh) {
@@ -111,32 +104,41 @@ void readinfo(ifstream& ifs, BMPinfo& bi) {
 	ifs.read(reinterpret_cast<char*>(&bi.bit_count), 2);
 	ifs.read(reinterpret_cast<char*>(&bi.compression), 4);
 	ifs.read(reinterpret_cast<char*>(&bi.size_image), 4);
-	if (bi.size_image == 0)
-		bi.size_image = bi.height * (bi.width + (bi.width % 4));
+	//if (bi.size_image == 0)
+		//bi.size_image = bi.height * (bi.width + (bi.width % 4));
 	/*
 		w przypadku niepoprawnej wartosci size_image automatycznie ja wyliczam
 		zdarzalo sie, ze obrazy z internetu mialy ta wartosc ustawiona na 0
-	*/ 
+	*/
 	ifs.read(reinterpret_cast<char*>(&bi.xppm), 4);
 	ifs.read(reinterpret_cast<char*>(&bi.yppm), 4);
 	ifs.read(reinterpret_cast<char*>(&bi.colors_used), 4);
 	ifs.read(reinterpret_cast<char*>(&bi.colors_important), 4);
 }
 
-
-
-
-
 void readpixel(ifstream& ifs, BMP& plik) {
-	byte smietnik;
 	ifs.seekg(plik.header.offset_data, ios::beg);
-	plik.piksele = new pixel[plik.info.size_image];
+	plik.piksele = new pixel[plik.info.width * plik.info.height];
 	for (int i = 0; i < plik.info.height; i++) {
 		for (int j = 0; j < plik.info.width; j++)
 			ifs.read(reinterpret_cast<char*>(&plik.piksele[i * plik.info.width + j]), 3);
-		for (int j = 0; j < plik.info.width % 4; j++)
-			ifs.read(reinterpret_cast<char*>(&smietnik), 1);
+		ifs.seekg(plik.info.width % 4, ios::cur);
 
+	}
+}
+
+int sprawdz(BMP plik) {
+	if (plik.header.file_type != 0x4D42) {
+		cout << "Niepoprawny typ pliku." << endl;
+		return -1;
+	}
+	if (plik.info.height < 3 || plik.info.width < 3) {
+		cout << "Plik jest za maly.";
+		return -1;
+	}
+	if (plik.info.bit_count != 24) {
+		cout << "Nieobslugiwana bitmapa";
+		return -1;
 	}
 }
 
@@ -148,10 +150,6 @@ int readBMP(BMP& plik, string path) {
 		return -1;
 	}
 	readheader(ifs, plik.header);
-	if (plik.header.file_type != 0x4D42) {
-		cout << "Niepoprawny typ pliku." << endl;
-		return -1;
-	}
 	readinfo(ifs, plik.info);
 	readpixel(ifs, plik);
 	ifs.close();
@@ -192,7 +190,7 @@ void mapuj(int& tR, int& tG, int& tB) {
 		tG = 0;
 	if (tB < 0)
 		tB = 0;
-	
+
 }
 
 void maska(pixel zr[9], pixel& p, const int m[3][3]) {
@@ -205,7 +203,11 @@ void maska(pixel zr[9], pixel& p, const int m[3][3]) {
 			tG += (int)zr[i * 3 + j].G * (int)m[i][j];
 			tB += (int)zr[i * 3 + j].B * (int)m[i][j];
 		}
-	
+	if (srednia) {
+		tR /= 8;
+		tG /= 8;
+		tB /= 8;
+	}
 	mapuj(tR, tG, tB);
 	if (tR >= p.R)
 		p.R = tR;
@@ -215,12 +217,10 @@ void maska(pixel zr[9], pixel& p, const int m[3][3]) {
 		p.B = tB;
 }
 
-
-void wykrywanie(BMP plik, const int m[3][3]) {
+void wykrywanie(BMP plik) {
 	int width = plik.info.width;
-	int height = plik.info.height;
-	pixel* temp = new pixel[plik.info.size_image];
-	for (int i = 1; i < height - 1; i++)
+	pixel* temp = new pixel[plik.info.height * width];
+	for (int i = 1; i < plik.info.height - 1; i++)
 		for (int j = 1; j < width - 1; j++) {
 			pixel zr[9];
 			zr[0] = plik.piksele[(i - 1) * width + j - 1];
@@ -232,16 +232,10 @@ void wykrywanie(BMP plik, const int m[3][3]) {
 			zr[6] = plik.piksele[(i + 1) * width + j - 1];
 			zr[7] = plik.piksele[(i + 1) * width + j];
 			zr[8] = plik.piksele[(i + 1) * width + j + 1];
-			maska(zr, temp[i * width + j], s1);
-			maska(zr, temp[i * width + j], s2);
-			maska(zr, temp[i * width + j], s3);
-			maska(zr, temp[i * width + j], s4);
-			maska(zr, temp[i * width + j], s5);
-			maska(zr, temp[i * width + j], s6);
-			maska(zr, temp[i * width + j], s7);
-			maska(zr, temp[i * width + j], s8);
+			for (int m = 0; m < 8; m++)
+				maska(zr, temp[i * width + j], s[m]);
 		}
-	copy(temp, temp + plik.info.size_image, plik.piksele);
+	copy(temp, temp + plik.info.height * width, plik.piksele);
 	delete[] temp;
 }
 
@@ -249,7 +243,6 @@ void saveBMP(BMP plik, string path) {
 	ofstream ofs;
 	ofs.open(path, ios::binary);
 	byte z = 0;
-	plik.header.offset_data = sizeof(plik.header) + sizeof(plik.info);
 	ofs.write((char*)&plik.header, sizeof(plik.header));
 	ofs.write((char*)&plik.info, sizeof(plik.info));
 	ofs.seekp(plik.header.offset_data, ios::beg);
@@ -263,24 +256,43 @@ void saveBMP(BMP plik, string path) {
 	ofs.close();
 }
 
+void draw_logo() {
+	cout << "--------------------------------------------------------------------" << endl;
+	string logo[8] = {
+		"| ad88888ba     ,ad8888ba,    88888888ba   88888888888  88         |",
+		"|d8\"     \"8b   d8\"'    `\"8b   88      \"8b  88           88         |",
+		"|Y8,          d8'        `8b  88      ,8P  88           88         |",
+		"|`Y8aaaaa,    88          88  88aaaaaa8P'  88aaaaa      88         |",
+		"|  `\"\"\"\"\"8b,  88          88  88\"\"\"\"\"\"8b,  88\"\"\"\"\"      88         |",
+		"|        `8b  Y8,        ,8P  88      `8b  88           88         |",
+		"|Y8a     a8P   Y8a.    .a8P   88      a8P  88           88         |",
+		"| \"Y88888P\"     `\"Y8888Y\"'    88888888P\"   88888888888  88888888888|"
+	};
+	for (string l : logo)
+		cout << l << endl;
+	cout << "--------------------------------------------------------------------" << endl << endl;
+}
+
 int main()
 {
-	
-	cout << "Wpisz nazwe pliku: ";
+	draw_logo();
 	string path;
+	string path_out;
+	cout << "Wpisz nazwe pliku: ";
+
 	cin >> path;
+
+	cout << "Wpisz nazwe pliku wyjsciowego: ";
+
+	cin >> path_out;
 
 	BMP plik;
 	if (readBMP(plik, path) == -1)
 		return -1;
+	if (sprawdz(plik) == -1)
+		return -1;
 	printinfo(plik);
-	wykrywanie(plik, s1);
-
-	cout << "Wpisz nazwe pliku wyjsciowego: ";
-	string path_out;
-	cin >> path_out;
-	
+	wykrywanie(plik);
 	saveBMP(plik, path_out);
 	delete[] plik.piksele;
-	
 }
