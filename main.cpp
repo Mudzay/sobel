@@ -104,12 +104,6 @@ void readinfo(ifstream& ifs, BMPinfo& bi) {
 	ifs.read(reinterpret_cast<char*>(&bi.bit_count), 2);
 	ifs.read(reinterpret_cast<char*>(&bi.compression), 4);
 	ifs.read(reinterpret_cast<char*>(&bi.size_image), 4);
-	//if (bi.size_image == 0)
-		//bi.size_image = bi.height * (bi.width + (bi.width % 4));
-	/*
-		w przypadku niepoprawnej wartosci size_image automatycznie ja wyliczam
-		zdarzalo sie, ze obrazy z internetu mialy ta wartosc ustawiona na 0
-	*/
 	ifs.read(reinterpret_cast<char*>(&bi.xppm), 4);
 	ifs.read(reinterpret_cast<char*>(&bi.yppm), 4);
 	ifs.read(reinterpret_cast<char*>(&bi.colors_used), 4);
@@ -123,7 +117,12 @@ void readpixel(ifstream& ifs, BMP& plik) {
 		for (int j = 0; j < plik.info.width; j++)
 			ifs.read(reinterpret_cast<char*>(&plik.piksele[i * plik.info.width + j]), 3);
 		ifs.seekg(plik.info.width % 4, ios::cur);
-
+		/*
+			padding:
+			ilosc bitow paddingu jest rowna szerokosc % 4, poniewaz:
+			p = szerokosc % 4
+			(szerokosc * 3 + p) % 4 jest rowna 0 dla kazdej liczby naturalnej (a w pliku szerokosc moze byc tylko liczba naturalna)
+		*/
 	}
 }
 
@@ -203,17 +202,17 @@ void maska(pixel zr[9], pixel& p, const int m[3][3]) {
 			tG += (int)zr[i * 3 + j].G * (int)m[i][j];
 			tB += (int)zr[i * 3 + j].B * (int)m[i][j];
 		}
+	mapuj(tR, tG, tB);
 	if (srednia) {
 		tR /= 8;
 		tG /= 8;
 		tB /= 8;
 	}
-	mapuj(tR, tG, tB);
-	if (tR >= p.R)
+	if (tR > p.R)
 		p.R = tR;
-	if (tG >= p.G)
+	if (tG > p.G)
 		p.G = tG;
-	if (tB >= p.B)
+	if (tB > p.B)
 		p.B = tB;
 }
 
@@ -273,26 +272,96 @@ void draw_logo() {
 	cout << "--------------------------------------------------------------------" << endl << endl;
 }
 
+void czarnalinia(ofstream& ofs, int width)
+{
+	pixel z;
+	for (int i = 0; i < width; i++)
+		ofs.write((char*)&z, 3);
+	ofs.seekp(width % 4, ios::cur);
+}
+
+void czesci(BMP& plik, string path, string path_out) {
+	ifstream ifs;
+	ifs.open(path, ios::binary);
+	readheader(ifs, plik.header);
+	readinfo(ifs, plik.info);
+	ifs.seekg(plik.header.offset_data, ios::beg);
+
+	ofstream ofs;
+	ofs.open(path_out, ios::binary);
+	ofs.write((char*)&plik.header, sizeof(plik.header));
+	ofs.write((char*)&plik.info, sizeof(plik.info));
+	ofs.seekp(plik.header.offset_data + plik.info.width*3 + (plik.info.width%4), ios::beg);
+
+	pixel zr[9];
+
+	plik.piksele = new pixel[3 * plik.info.width];
+	pixel* wynik = new pixel[plik.info.width];
+	pixel zero;
+
+	//czarnalinia(ofs, plik.info.width);
+
+	for (int seg = 0; seg < plik.info.height - 2; seg++) {
+		
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < plik.info.width; j++)
+				ifs.read(reinterpret_cast<char*>(&plik.piksele[i * plik.info.width + j]), 3);
+			ifs.seekg(plik.info.width % 4, ios::cur);
+		}
+		ifs.seekg(-2 * ((plik.info.width * 3) + 2*(plik.info.width % 4)), ios::cur);
+		for (int i = 1; i < plik.info.width - 1; i++) {
+			zr[0] = plik.piksele[i - 1];
+			zr[1] = plik.piksele[i];
+			zr[2] = plik.piksele[i + 1];
+			zr[3] = plik.piksele[plik.info.width + i - 1];
+			zr[4] = plik.piksele[plik.info.width + i];
+			zr[5] = plik.piksele[plik.info.width + i + 1];
+			zr[6] = plik.piksele[2 * plik.info.width + i - 1];
+			zr[7] = plik.piksele[2 * plik.info.width + i];
+			zr[8] = plik.piksele[2 * plik.info.width + i + 1];
+			for (int k = 0; k < 8; k++)
+				wynik[i] = plik.piksele[plik.info.width + i];
+				//maska(zr, wynik[i], s[k]);
+		}
+
+		for (int i = 0; i < plik.info.width; i++)
+			ofs.write((char*)&wynik[i], 3);
+		ofs.seekp(plik.info.width % 4, ios::cur);
+	}
+	
+
+
+	czarnalinia(ofs, plik.info.width);
+	ofs.close();
+	ifs.close();
+
+}
+
 int main()
 {
 	draw_logo();
-	string path;
-	string path_out;
-	cout << "Wpisz nazwe pliku: ";
+	string path = "test.bmp";
+	string path_out = "testcz.bmp";
+	if (false) {
+		cout << "Wpisz nazwe pliku: ";
 
-	cin >> path;
+		cin >> path;
 
-	cout << "Wpisz nazwe pliku wyjsciowego: ";
+		cout << "Wpisz nazwe pliku wyjsciowego: ";
 
-	cin >> path_out;
-
+		cin >> path_out;
+	}
 	BMP plik;
-	if (readBMP(plik, path) == -1)
-		return -1;
-	if (sprawdz(plik) == -1)
-		return -1;
-	printinfo(plik);
-	wykrywanie(plik);
-	saveBMP(plik, path_out);
-	delete[] plik.piksele;
-}
+	if (false) {
+		if (readBMP(plik, path) == -1)
+			return -1;
+		if (sprawdz(plik) == -1)
+			return -1;
+		printinfo(plik);
+		wykrywanie(plik);
+		saveBMP(plik, path_out);
+
+		delete[] plik.piksele;
+	}
+	czesci(plik, path, path_out);
+} 
