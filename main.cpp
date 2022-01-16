@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+
 #pragma pack(1) //wyrownanie pol struktur do 1 bajta zeby wyeliminowac wyrownywanie pol struktur do 4 bajtow
 
 using namespace std;
@@ -43,7 +44,9 @@ struct BMP {
 	pixel* piksele;
 };
 
-const int s[8][3][3] = {
+/*
+na wypadek utraty pliku z maskami
+const int8_t s[8][3][3] = {
 	{
 		{-1, 0, 1},
 		{-2, 0, 2},
@@ -86,34 +89,40 @@ const int s[8][3][3] = {
 	}
 };
 
-void readheader(ifstream& ifs, BMPheader& bfh) {
-	//wczytywanie danych naglowka pliku
-	ifs.read(reinterpret_cast<char*>(&bfh.file_type), 2);
-	ifs.read(reinterpret_cast<char*>(&bfh.file_size), 4);
-	ifs.read(reinterpret_cast<char*>(&bfh.reserved1), 2);
-	ifs.read(reinterpret_cast<char*>(&bfh.reserved2), 2);
-	ifs.read(reinterpret_cast<char*>(&bfh.offset_data), 4);
-}
 
-void readinfo(ifstream& ifs, BMPinfo& bi) {
-	//wczytywanie danych naglowka obrazu
-	ifs.read(reinterpret_cast<char*>(&bi.size), 4);
-	ifs.read(reinterpret_cast<char*>(&bi.width), 4);
-	ifs.read(reinterpret_cast<char*>(&bi.height), 4);
-	ifs.read(reinterpret_cast<char*>(&bi.planes), 2);
-	ifs.read(reinterpret_cast<char*>(&bi.bit_count), 2);
-	ifs.read(reinterpret_cast<char*>(&bi.compression), 4);
-	ifs.read(reinterpret_cast<char*>(&bi.size_image), 4);
-	//if (bi.size_image == 0)
-		//bi.size_image = bi.height * (bi.width + (bi.width % 4));
-	/*
-		w przypadku niepoprawnej wartosci size_image automatycznie ja wyliczam
-		zdarzalo sie, ze obrazy z internetu mialy ta wartosc ustawiona na 0
-	*/
-	ifs.read(reinterpret_cast<char*>(&bi.xppm), 4);
-	ifs.read(reinterpret_cast<char*>(&bi.yppm), 4);
-	ifs.read(reinterpret_cast<char*>(&bi.colors_used), 4);
-	ifs.read(reinterpret_cast<char*>(&bi.colors_important), 4);
+void savesobel(int8_t s[8][3][3])
+{
+	ofstream ofs;
+	ofs.open("maski.xdd", ios::binary);
+	char format[3];
+	format[0] = 'X';
+	format[1] = 'D';
+	format[2] = 'D';
+
+	for (int f = 0; f < 3; f++)
+		ofs.write((char*)&format[f], 1);
+
+	for (int z = 0; z < 8; z++)
+		for (int i = 0; i < 3; i++)
+			for (int j = 0; j < 3; j++)
+				ofs.write((char*)&s[z][i][j], 1);
+	ofs.close();
+}
+*/
+
+int readsobel(int8_t s[8][3][3]) {
+	char format[3];
+	ifstream ifs;
+	ifs.open("maski.xdd", ios::binary);
+	ifs.read(reinterpret_cast<char*>(&format), 3);
+	if (format[0] != 'X' && format[1] != 'D' && format[2] != 'D')
+		return -1;
+	for (int z = 0; z < 8; z++)
+		for (int i = 0; i < 3; i++)
+			for (int j = 0; j < 3; j++)
+				ifs.read(reinterpret_cast<char*>(&s[z][i][j]), 1);
+	ifs.close();
+	return 0;
 }
 
 void readpixel(ifstream& ifs, BMP& plik) {
@@ -123,7 +132,12 @@ void readpixel(ifstream& ifs, BMP& plik) {
 		for (int j = 0; j < plik.info.width; j++)
 			ifs.read(reinterpret_cast<char*>(&plik.piksele[i * plik.info.width + j]), 3);
 		ifs.seekg(plik.info.width % 4, ios::cur);
-
+		/*
+			padding:
+			ilosc bitow paddingu jest rowna szerokosc % 4, poniewaz:
+			p = szerokosc % 4
+			(szerokosc * 3 + p) % 4 jest rowna 0 dla kazdej liczby naturalnej (a w pliku szerokosc moze byc tylko liczba naturalna)
+		*/
 	}
 }
 
@@ -149,8 +163,8 @@ int readBMP(BMP& plik, string path) {
 		cout << "Plik nie istnieje." << endl;
 		return -1;
 	}
-	readheader(ifs, plik.header);
-	readinfo(ifs, plik.info);
+	ifs.read(reinterpret_cast<char*>(&plik.header), sizeof(plik.header));
+	ifs.read(reinterpret_cast<char*>(&plik.info), sizeof(plik.info));
 	readpixel(ifs, plik);
 	ifs.close();
 	return 0;
@@ -190,10 +204,9 @@ void mapuj(int& tR, int& tG, int& tB) {
 		tG = 0;
 	if (tB < 0)
 		tB = 0;
-
 }
 
-void maska(pixel zr[9], pixel& p, const int m[3][3]) {
+void maska(pixel zr[9], pixel& p, int8_t m[3][3]) {
 	int tR = 0;
 	int tG = 0;
 	int tB = 0;
@@ -203,21 +216,21 @@ void maska(pixel zr[9], pixel& p, const int m[3][3]) {
 			tG += (int)zr[i * 3 + j].G * (int)m[i][j];
 			tB += (int)zr[i * 3 + j].B * (int)m[i][j];
 		}
+	mapuj(tR, tG, tB);
 	if (srednia) {
 		tR /= 8;
 		tG /= 8;
 		tB /= 8;
 	}
-	mapuj(tR, tG, tB);
-	if (tR >= p.R)
+	if (tR > p.R)
 		p.R = tR;
-	if (tG >= p.G)
+	if (tG > p.G)
 		p.G = tG;
-	if (tB >= p.B)
+	if (tB > p.B)
 		p.B = tB;
 }
 
-void wykrywanie(BMP plik) {
+void wykrywanie(BMP plik, int8_t s[8][3][3]) {
 	int width = plik.info.width;
 	pixel* temp = new pixel[plik.info.height * width];
 	for (int i = 1; i < plik.info.height - 1; i++)
@@ -273,26 +286,131 @@ void draw_logo() {
 	cout << "--------------------------------------------------------------------" << endl << endl;
 }
 
+void czarnalinia(ofstream& ofs, int width)
+{
+	pixel z;
+	byte zero;
+	for (int i = 0; i < width; i++)
+		ofs.write((char*)&z, 3);
+	for (int i = 0; i < width % 4; i++)
+		ofs.write((char*)&zero, 1);
+}
+
+int czesci(BMP& plik, string path, string path_out, int8_t s[8][3][3]) {
+	ifstream ifs;
+	ifs.open(path, ios::binary);
+	if (!ifs.is_open()) {
+		cout << "Plik nie istnieje." << endl;
+		return -1;
+	}
+
+	ifs.read(reinterpret_cast<char*>(&plik.header), sizeof(plik.header));
+	ifs.read(reinterpret_cast<char*>(&plik.info), sizeof(plik.info));
+
+	if (sprawdz(plik) == -1)
+		return -1;
+	ifs.seekg(plik.header.offset_data, ios::beg);
+	printinfo(plik);
+
+	ofstream ofs;
+	ofs.open(path_out, ios::binary);
+	ofs.write((char*)&plik.header, sizeof(plik.header));
+	ofs.write((char*)&plik.info, sizeof(plik.info));
+	ofs.seekp(plik.header.offset_data, ios::beg);
+
+	pixel zr[9];
+
+	plik.piksele = new pixel[3 * plik.info.width];
+	pixel* wynik = new pixel[plik.info.width];
+	byte zero = 0;
+	pixel z;
+
+	czarnalinia(ofs, plik.info.width);
+
+	for (int seg = 0; seg < plik.info.height - 2; seg++) {
+
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < plik.info.width; j++)
+				ifs.read(reinterpret_cast<char*>(&plik.piksele[i * plik.info.width + j]), 3);
+			ifs.seekg(plik.info.width % 4, ios::cur);
+		}
+		ifs.seekg(-2 * (plik.info.width * 3), ios::cur);
+		ifs.seekg(-2 * (plik.info.width % 4), ios::cur);
+
+
+		for (int i = 1; i < plik.info.width - 1; i++) {
+			zr[0] = plik.piksele[i - 1];
+			zr[1] = plik.piksele[i];
+			zr[2] = plik.piksele[i + 1];
+			zr[3] = plik.piksele[plik.info.width + i - 1];
+			zr[4] = plik.piksele[plik.info.width + i];
+			zr[5] = plik.piksele[plik.info.width + i + 1];
+			zr[6] = plik.piksele[2 * plik.info.width + i - 1];
+			zr[7] = plik.piksele[2 * plik.info.width + i];
+			zr[8] = plik.piksele[2 * plik.info.width + i + 1];
+			for (int k = 0; k < 8; k++)
+				maska(zr, wynik[i], s[k]);
+		}
+		for (int i = 0; i < plik.info.width; i++) {
+			ofs.write((char*)&wynik[i], 3);
+			wynik[i] = z;
+		}
+		for (int i = 0; i < plik.info.width % 4; i++)
+			ofs.write((char*)&zero, 1);
+	}
+
+	czarnalinia(ofs, plik.info.width);
+	ofs.close();
+	ifs.close();
+	delete[] plik.piksele;
+}
+
+void help() {
+	cout << "Struktura pliku w ktorym zapisuje maski:" << endl;
+	cout << "char format[3] -    format pliku, powinien wynosic {'X', 'D', 'D'}" << endl;
+	cout << "int8_t s[8][3][3] - maski sobela w dowolnej kolejnosci\n                    zapisane jako ciag jednobajtowych liczb" << endl;
+}
+
 int main()
 {
+	int8_t s[8][3][3];
+
+	if (readsobel(s) == -1)
+		return -1;
+
 	draw_logo();
+
+	int tryb;
 	string path;
 	string path_out;
+	cout << "[1] wczytaj caly plik na raz | [2] wczytaj plik segmentami | [3] pomoc" << endl;
+	do {
+		cout << "~$";
+		cin >> tryb;
+		if (tryb == 3) {
+			help();
+			tryb = -1;
+		}
+	} while (tryb != 1 && tryb != 2 && tryb != 3);
+
 	cout << "Wpisz nazwe pliku: ";
-
 	cin >> path;
-
 	cout << "Wpisz nazwe pliku wyjsciowego: ";
-
 	cin >> path_out;
 
 	BMP plik;
-	if (readBMP(plik, path) == -1)
-		return -1;
-	if (sprawdz(plik) == -1)
-		return -1;
-	printinfo(plik);
-	wykrywanie(plik);
-	saveBMP(plik, path_out);
-	delete[] plik.piksele;
+	if (tryb == 1) {
+		if (readBMP(plik, path) == -1)
+			return -1;
+		if (sprawdz(plik) == -1)
+			return -1;
+		printinfo(plik);
+		wykrywanie(plik, s);
+		saveBMP(plik, path_out);
+		delete[] plik.piksele;
+	}
+	else if (tryb == 2)
+		czesci(plik, path, path_out, s);
+
+	return 0;
 }
